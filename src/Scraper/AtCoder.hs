@@ -2,6 +2,7 @@
 module Scraper.AtCoder where
 
 import           Control.Monad
+import           Control.Applicative
 import           Control.Lens
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as LBS
@@ -14,7 +15,8 @@ import qualified Network.Wreq.Session as Session
 import           Text.HTML.Scalpel
 import           Text.Printf
 
-loginURL = "https://atcoder.jp/login"
+rootURL = "https://atcoder.jp/"
+loginURL = rootURL </> "/login"
 contestRootURL contestId = "https://atcoder.jp/contests/" </> contestId
 (</>) :: String -> String -> String
 (</>) "" right = right
@@ -32,7 +34,7 @@ data LoginForm = LoginForm {
   , loginCSRFToken :: !T.Text
   } deriving Show
 
-data Task = Task {
+data TaskInfo = TaskInfo {
     taskId          :: !T.Text
   , taskName        :: !T.Text
   , taskLink        :: !T.Text
@@ -40,9 +42,23 @@ data Task = Task {
   , taskMemoryLimit :: !T.Text
   } deriving(Show)
 
-defaultTask :: Task
+data TaskDetail = TaskDetail {
+    taskInfo :: !TaskInfo
+  , taskStatement:: !T.Text
+  , taskConstraint :: !T.Text
+  , taskInputSpec :: !T.Text
+  , taskOutputSpec :: !T.Text
+  , taskSampleCases :: [SampleCase]
+  } deriving(Show)
+
+data SampleCase = SampleCase {
+    sampleInput :: !T.Text
+  , sampleOutput ::  !T.Text
+  } deriving(Show)
+
+defaultTask :: TaskInfo
 defaultTask = 
-    Task { 
+    TaskInfo { 
         taskId = "NA"
       , taskName = "NA"
       , taskLink = "NA"
@@ -56,7 +72,7 @@ buildLoginForm LoginForm{..} username passwd =
     , encodeUtf8 loginPassF := passwd
     , encodeUtf8 loginCSRFF := loginCSRFToken ]
 
-parseTasks :: Scraper T.Text [Task]
+parseTasks :: Scraper T.Text [TaskInfo]
 parseTasks = chroots rowSelector parseRow
     where
     rowSelector = 
@@ -86,10 +102,28 @@ parseLoginForm = chroot loginForm parseForm
         loginCSRFToken <- attr "value" $ "input" @: [ "type" @= "hidden" ]
         pure $ LoginForm {..}
 
+parseTaskDetail :: TaskInfo -> Scraper T.Text TaskDetail
+parseTaskDetail taskInfo = chroot stmtJa parseStmt
+    where
+    stmtJa = "div"  @: [ "id"  @= "task-statement" ] 
+             // "span" @: ["class" @= "lang-ja" ]
+    parseStmt = inSerial $ do
+        taskStatement <- seekNext $ innerHTML "section"
+        taskConstraint <- seekNext $ innerHTML "section"
+        taskInputSpec <- seekNext $ innerHTML "section"
+        taskOutputSpec <- seekNext $ innerHTML "section"
+        taskSampleCases <- many $ do
+            sampleInput <- seekNext $ text $ "section" // "pre"
+            sampleOutput <- seekNext $ text $ "section" // "pre"
+            pure SampleCase{..}
+        pure TaskDetail{..}
+
+
 scrapeResponse :: Response LBS.ByteString -> Scraper T.Text a -> Maybe a
 scrapeResponse res action = scrapeStringLike htmlText action
     where
     htmlText = decodeUtf8 $ LBS.toStrict (res ^. responseBody)
+
 
 login :: Session.Session -> String -> String -> IO ()
 login sess username passwd = do
@@ -100,11 +134,18 @@ login sess username passwd = do
     let status = loginPostRes ^. responseStatus . statusCode
     printf "Login Succeeded (%d)\n" status
 
-tasks :: Session.Session -> String -> IO [Task]
+tasks :: Session.Session -> String -> IO [TaskInfo]
 tasks sess contestId = do
     tasksGetR <- Session.get sess (contestRootURL contestId </> "tasks" )
     let Just tasks = scrapeResponse tasksGetR parseTasks
     pure tasks
+
+taskDetail :: Session.Session -> TaskInfo -> IO TaskDetail
+taskDetail sess task = do
+    let url = rootURL </> T.unpack (taskLink task)
+    detailGetR <- Session.get sess url
+    let Just detail = scrapeResponse detailGetR (parseTaskDetail task)
+    pure detail
 
 main :: IO ()
 main = do
@@ -115,3 +156,6 @@ main = do
     login sess username passwd
     tasks <- tasks sess contestName
     print tasks
+    forM_ tasks $ \task -> do
+        l <-taskDetail sess task
+        print l
