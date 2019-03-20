@@ -18,6 +18,7 @@ extra-source-files:  CHANGELOG.md
 
 library
   exposed-modules: Scraper.AtCoder
+                 , Scraper.Parser
   -- other-modules:
   -- other-extensions:
   build-depends:       base ^>=4.12.0.0
@@ -25,6 +26,7 @@ library
                      , scalpel ^>= 0.6.0
                      , text ^>= 1.2.3.1
                      , time ^>= 1.8.0.2
+                     , parsec ^>= 3.1.13.0
                      , lens
                      , bytestring
                      , aeson
