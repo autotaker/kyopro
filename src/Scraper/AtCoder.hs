@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, RecordWildCards, BangPatterns, NoTypeApplications, LambdaCase #-}
+{-# LANGUAGE OverloadedStrings, RecordWildCards, BangPatterns, NoTypeApplications, LambdaCase, DeriveGeneric #-}
 module Scraper.AtCoder where
 
 import           Control.Monad
@@ -14,6 +14,8 @@ import           Network.Wreq
 import qualified Network.Wreq.Session as Session
 import           Text.HTML.Scalpel
 import           Text.Printf
+import           GHC.Generics
+import           Data.Char(toLower)
 
 rootURL = "https://atcoder.jp/"
 loginURL = rootURL </> "/login"
@@ -26,7 +28,6 @@ contestRootURL contestId = "https://atcoder.jp/contests/" </> contestId
     | head right == '/' = left ++ right
     | otherwise  = left ++ '/': right
     
-
 data LoginForm = LoginForm {
     loginUserF :: !T.Text
   , loginPassF :: !T.Text
@@ -34,37 +35,52 @@ data LoginForm = LoginForm {
   , loginCSRFToken :: !T.Text
   } deriving Show
 
+
 data TaskInfo = TaskInfo {
     taskId          :: !T.Text
   , taskName        :: !T.Text
   , taskLink        :: !T.Text
   , taskTimeLimit   :: !T.Text
   , taskMemoryLimit :: !T.Text
-  } deriving(Show)
+  } deriving(Show, Generic)
+
+myModifier :: String -> String -> String
+myModifier prefix str = toLower ch : cs
+    where
+    ch:cs = drop (length prefix) str
+
+instance Aeson.ToJSON TaskInfo where
+  toEncoding = Aeson.genericToEncoding options
+    where options = Aeson.defaultOptions {
+        Aeson.fieldLabelModifier = myModifier "task" 
+    }
+
+instance Aeson.ToJSON TaskDetail where
+  toEncoding = Aeson.genericToEncoding options
+    where options = Aeson.defaultOptions {
+        Aeson.fieldLabelModifier = myModifier "task" 
+    }
+instance Aeson.ToJSON SampleCase where
+  toEncoding = Aeson.genericToEncoding options
+    where options = Aeson.defaultOptions {
+        Aeson.fieldLabelModifier = myModifier "sample" 
+    }
 
 data TaskDetail = TaskDetail {
     taskInfo :: !TaskInfo
   , taskStatement:: !T.Text
   , taskConstraint :: !T.Text
   , taskInputSpec :: !T.Text
+  , taskInputSpecPre :: !T.Text
   , taskOutputSpec :: !T.Text
   , taskSampleCases :: [SampleCase]
-  } deriving(Show)
+  } deriving(Show, Generic)
+
 
 data SampleCase = SampleCase {
     sampleInput :: !T.Text
   , sampleOutput ::  !T.Text
-  } deriving(Show)
-
-defaultTask :: TaskInfo
-defaultTask = 
-    TaskInfo { 
-        taskId = "NA"
-      , taskName = "NA"
-      , taskLink = "NA"
-      , taskTimeLimit = "NA"
-      , taskMemoryLimit = "NA" 
-    }
+  } deriving(Show, Generic)
 
 buildLoginForm :: LoginForm -> String -> String -> [ FormParam ]
 buildLoginForm LoginForm{..} username passwd = 
@@ -77,19 +93,13 @@ parseTasks = chroots rowSelector parseRow
     where
     rowSelector = 
         "div" @: [ "id" @= "main-div" ] // "table" // "tbody" // "tr"
-    taskIdC link v acc = acc { taskId = v, taskLink = link }
-    taskNameC link v acc = acc { taskName = v, taskLink = link }
-    taskTimeLimitC v acc = acc { taskTimeLimit = v }
-    taskMemoryLimitC v acc = acc { taskMemoryLimit = v }
-
-    buildTask fieldsC = foldr1 (.) fieldsC defaultTask
-    parseRow = 
-        fmap buildTask $ chroots "td" $ position >>= \case
-            0 -> taskIdC <$> attr "href" "a" <*> text "a"
-            1 -> taskNameC <$> attr "href" "a" <*> text "a"
-            2 -> taskTimeLimitC <$> text anySelector
-            3 -> taskMemoryLimitC <$> text anySelector
-            _ -> pure id
+    parseRow = inSerial $ do
+        (taskLink, taskId) <- 
+            seekNext $ chroot "td" $ (,) <$> attr "href" "a" <*> text "a"
+        taskName <- seekNext $ text ("td" // "a")
+        taskTimeLimit <- seekNext $ text "td"
+        taskMemoryLimit <- seekNext $ text "td"
+        pure TaskInfo{..}
 
 parseLoginForm :: Scraper T.Text LoginForm
 parseLoginForm = chroot loginForm parseForm
@@ -110,8 +120,14 @@ parseTaskDetail taskInfo = chroot stmtJa parseStmt
     parseStmt = inSerial $ do
         taskStatement <- seekNext $ innerHTML "section"
         taskConstraint <- seekNext $ innerHTML "section"
-        taskInputSpec <- seekNext $ innerHTML "section"
-        taskOutputSpec <- seekNext $ innerHTML "section"
+        let ioStyle = "div" @: [ "class" @= "io-style" ]
+        let parseInputSpec = 
+                (,) <$> innerHTML ("section" // "pre")
+                    <*> innerHTML "section"
+        ((taskInputSpecPre, taskInputSpec), taskOutputSpec) <- 
+            seekNext (chroot ioStyle $ inSerial $ 
+                    (,) <$> seekNext parseInputSpec 
+                        <*> seekNext (innerHTML "section"))
         taskSampleCases <- many $ do
             sampleInput <- seekNext $ text $ "section" // "pre"
             sampleOutput <- seekNext $ text $ "section" // "pre"
@@ -155,7 +171,12 @@ main = do
     contestName <- getLine
     login sess username passwd
     tasks <- tasks sess contestName
-    print tasks
-    forM_ tasks $ \task -> do
-        l <-taskDetail sess task
-        print l
+    LBS.putStr $ Aeson.encode tasks
+    putChar '\n' 
+    taskDetails <- forM tasks $ \task -> do
+        l <- taskDetail sess task
+        LBS.putStr $ Aeson.encode l
+        putChar '\n'
+        pure l
+    Aeson.encodeFile "tasks.json" taskDetails
+
