@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Scraper.Parser where
 
@@ -16,6 +17,7 @@ import Data.Maybe
 import Control.Monad
 import Control.Lens
 import GHC.Generics hiding(Selector)
+import qualified Text.PrettyPrint.HughesPJClass as PP
 
 data Exp = Id !Ident
          | Dots | VDots
@@ -89,7 +91,6 @@ matchSeq pat1 pat2 patN = do
       , _seqVar = degree pat1
       , _seqPat = pat }
 
-
 -- A_{11} A_{12} ... A_{1M}
 -- A_{21} A_{22} ... A_{2M}
 -- \vdots
@@ -105,19 +106,6 @@ matchSeq pat1 pat2 patN = do
 -- A_{N1} A_{N2} ... A_{NM}
 -- >>>
 -- Sequence 1 'M' (\x -> PatSingle [PatVar "A" [Var 'n', x]])
---
--- type selector = Lens Pattern SubscriptElem
--- enumSelector :: Pattern -> [Selector]
--- match [pat1, pat2, patN] =
---   where
---   selectors = filter p $ enumSelector pat1
---   p sel = case (sel pat1, sel pat2, sel patN) of
---      (One, Two, Var _) -> True
---      _ -> False
---   Var n = head selectors patN
---   Sequence 1 n 'i' foldl (\pat sel -> pat & sel .~ Var 'i') pat1 selectors)
-
--- PatVar "A" 3 means A_{ijk}
 
 mathP, exprP :: Parser Exp
 mathP = varP exprP
@@ -165,6 +153,7 @@ subscriptP =
     char '_' *> doit 
     where doit = ((:[]) <$> elemP) 
                 <|> (char '{' *> many elemP <* char '}')
+
 elemP :: Parser SubscriptElem
 elemP = One <$ char '1' <|> Two <$ char '2' <|> Var <$> letter
 
@@ -174,3 +163,46 @@ identifier = many1 letter
 dotsP = string "..."
 vdotsP = string "\\vdots"
 
+instance PP.Pretty SubscriptElem where
+    pPrint One = PP.char '1'
+    pPrint Two = PP.char '2'
+    pPrint (Var ch) = PP.char ch
+    pPrint (Param i) = PP.pPrint i
+
+instance PP.Pretty Ident where
+    pPrint (Ident x []) = PP.text x
+    pPrint (Ident x [s]) = PP.text x PP.<> "_" PP.<> PP.pPrint s
+    pPrint (Ident x sub) = 
+        PP.text x PP.<> "_" PP.<> 
+            PP.braces (PP.hcat (PP.punctuate PP.comma (map PP.pPrint sub)))
+
+instance PP.Pretty Pattern where
+    pPrint (PatSingle xs) = PP.hsep $ map PP.pPrint xs
+    pPrint (PatHSep Sequence{ 
+        _seqBegin = s0
+      , _seqEnd = Right ch
+      , _seqVar = i
+      , _seqPat = pat }) =
+        PP.hsep [ PP.pPrint pat1, PP.pPrint pat2, "...", PP.pPrint patN ]
+        where pat1 = substPat i One pat
+              pat2 = substPat i Two pat
+              patN = substPat i (Var ch) pat
+    pPrint (PatVCat Sequence{ 
+        _seqBegin = s0
+      , _seqEnd = Right ch
+      , _seqVar = i
+      , _seqPat = pat }) =
+        PP.vcat [ PP.pPrint pat1, PP.pPrint pat2, "...", PP.pPrint patN ]
+        where pat1 = substPat i One pat
+              pat2 = substPat i Two pat
+              patN = substPat i (Var ch) pat
+
+substPat :: Int -> SubscriptElem -> Pattern -> Pattern
+substPat i v = goPat 
+    where
+    goPat (PatSingle l) = PatSingle $ map goIdent l
+    goPat (PatHSep s) = PatHSep $ s & seqPat %~ goPat
+    goPat (PatVCat s) = PatVCat $ s & seqPat %~ goPat
+    goIdent x = x & identSub %~ map goElem
+    goElem (Param j) | j == i = v
+    goElem x = x
