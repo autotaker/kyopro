@@ -27,7 +27,7 @@ library
                      , text ^>= 1.2.3.1
                      , time ^>= 1.8.0.2
                      , parsec ^>= 3.1.13.0
-                     , lens
+                     , lens ^>= 4.17
                      , bytestring
                      , aeson
   hs-source-dirs:      src
