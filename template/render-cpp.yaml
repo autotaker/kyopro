@@ -1,0 +1,46 @@
+tabstop: 2
+type:
+    int32: int
+    int64: long long
+    real: double
+    string: std::string
+    unknown: unknown
+    array: |
+        {% if length(dim) == 1 %}
+        std::vector<{{elem}}>
+        {% elif length(dim) == 2 %}
+        std::vector<std::vector<{{elem}}>>
+        {% elif length(dim) == 3 %}
+        std::vector<std::vector<std::vector<{{elem}}>>>
+        {% endif %}
+term:
+    var: |
+        {{ var }}
+    param: i{{ param }}
+    decl: |
+        {% if length(dim) == 0 %}
+        {{ type }} {{ var }};
+        {% elif length(dim) == 1 %}
+        {{ type }} {{ var }}({{ dim[0] }});
+        {% elif length(dim) == 2 %}
+        {{ type }} {{ var }}(dim[0], std::vector<{{ elem }}>({{ dim[1] }}));
+        {% elif length(dim) == 3 %}
+        {{ type }} {{ var }}(dim[0], std::vector<std::vector<{{ elem }}>>({{ dim[1] }}, std::vector<{{ elem }}>({{ dim[2] }})));
+        {% endif %}
+    scan: |
+        std::cin >> {{ var }}{% for i in index %}[{{ i }}]{% endfor %};
+    main: |
+        #include<bits/stdc++.h>
+        void solve({{vars[0][1]}} {{vars[0][0]}}{% for var in vars[1:] %}, {{ var[1] }} {{ var[0] }}{% endfor %}) {
+
+        }
+        int main(void) {
+          {{ main }}
+          solve({{vars[0][0]}}{% for v in vars[1:] %},{{v[0]}}{% endfor %});
+          return 0;
+        }
+    for: |
+        for(auto {{ param }} = 0; {{ param }} < {{ end }}; ++{{ param }})
+        {
+          {{ body }}
+        }

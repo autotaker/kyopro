@@ -45,12 +45,15 @@ degree (PatSingle _) = 0
 degree (PatHSep Sequence{ _seqPat = p }) = degree p + 1
 degree (PatVCat Sequence{ _seqPat = p }) = degree p + 1
 
-matchSeq :: Pattern -> Pattern -> Pattern -> Maybe Sequence
-matchSeq pat1 pat2 patN = do
+matchSeq :: Pattern -> Maybe Pattern -> Pattern -> Maybe Sequence
+matchSeq pat1 mpat2 patN = do
     let sels = filter p $ enumSelector pat1
         isVar (Var _) = True
         isVar _ = False
-        p (Sel sel) = anyOf sel (==Two) pat2 && anyOf sel isVar patN
+        p = case mpat2 of
+            Just pat2 -> \(Sel sel) -> 
+                anyOf sel (==Two) pat2 && anyOf sel isVar patN
+            Nothing -> \(Sel sel) -> anyOf sel isVar patN
     Sel sel0:_ <- pure sels
     [Var n] <- pure (toListOf sel0 patN)
     let i = degree pat1
@@ -95,11 +98,11 @@ lineP = (try finiteP <|> try sequenceP) <* (void crlf <|> eof)
     finiteP = PatSingle <$> sepBy1 (varP identP) sp
     sequenceP = do
         var1 <- varP identP <* sp 
-        var2 <- varP identP <* sp 
+        mvar2 <- optionMaybe (varP identP <* sp)
         _ <- varP dotsP <* sp
         varN <- varP identP
         let pat1 = PatSingle [var1]
-            pat2 = PatSingle [var2]
+            pat2 = fmap (PatSingle . (:[])) mvar2
             patN = PatSingle [varN]
         Just s <- pure $ matchSeq pat1 pat2 patN
         pure $ PatHSep s
@@ -109,7 +112,7 @@ specP = try vcatP <|> lineP
     where
     vcatP = do
         pat1 <- lineP
-        pat2 <- lineP
+        pat2 <- optionMaybe lineP
         varP vdotsP <* crlf
         patN <- lineP
         Just s <- pure $ matchSeq pat1 pat2 patN
@@ -131,4 +134,4 @@ identifier :: Parser String
 identifier = many1 letter
 
 dotsP = string "..."
-vdotsP = string "\\vdots"
+vdotsP = string "\\vdots" <|> string ":"

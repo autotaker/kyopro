@@ -2,7 +2,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE RecordWildCards #-}
-module Scraper.GenParser(Elem(..), Size(..), Shape(..), infer, main) where
+module Scraper.GenParser(Elem(..), Size(..), Shape(..), shapeDim, infer, main) where
 import Scraper.Types
 import Control.Monad
 import qualified Data.Set as S 
@@ -34,6 +34,10 @@ data Shape = Shape {
     shapeElem :: !Elem 
   }deriving(Show)
 
+shapeDim :: Shape -> Int
+shapeDim = length . shapeSize
+
+
 instance Semigroup Elem where
     Unknown <> x = x
     x <> Unknown = x
@@ -62,6 +66,7 @@ data Size = SizeConst !Int | SizeVar !String
 
 data Value = VInt32 Int | VInt64 Int | VReal Double | VStr String 
     deriving(Show)
+
 data Key = Key !String ![Int]
     deriving(Eq, Ord,Show)
 

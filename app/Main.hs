@@ -3,14 +3,15 @@ module Main where
 
 import Scraper.GenParser hiding (main)
 import Scraper.Types
-import qualified Generator.Haskell as Haskell
-import qualified Generator.Cplusplus as Cpp
+import qualified Generator.Render as Render
+import Generator.Compile
 import qualified Data.Aeson as Aeson
 import Control.Monad
 import Control.Lens
 import Data.Aeson.Lens
 import Text.Parsec
 import Scraper.Parser
+import qualified Data.Text.IO as T
 
 main :: IO ()
 main = do
@@ -23,6 +24,7 @@ main = do
             Right ptns -> do
                 Right res <- pure $ infer ptns [ x | StringPrim x <- inputs]
                 print res
-                print $ Haskell.gen res ptns
-                print $ Cpp.gen res ptns
+                let prog = compile res ptns
+                tmpl <- Render.parseYaml "render.yaml"
+                T.putStr $ Render.render res tmpl prog
 

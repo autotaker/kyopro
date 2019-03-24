@@ -125,9 +125,10 @@ parseTaskDetail taskInfo = chroot stmtJa parseStmt
                 (,) <$> innerHTML ("section" // "pre")
                     <*> innerHTML "section"
         ((taskInputSpecPre, taskInputSpec), taskOutputSpec) <- 
-            seekNext (chroot ioStyle $ inSerial $ 
+            (seekNext (chroot ioStyle $ inSerial $ 
                     (,) <$> seekNext parseInputSpec 
-                        <*> seekNext (innerHTML "section"))
+                        <*> seekNext (innerHTML "section")))
+              <|> ((,) <$> seekNext parseInputSpec <*> seekNext (innerHTML "section"))
         taskSampleCases <- many $ do
             sampleInput <- seekNext $ text $ "section" // "pre"
             sampleOutput <- seekNext $ text $ "section" // "pre"

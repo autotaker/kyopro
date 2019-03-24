@@ -1,0 +1,93 @@
+tabstop: 4
+type:
+    int32: Int
+    int64: Int
+    real: Double
+    string: String
+    unknown: Unknown
+    array: |
+        {% if elem != "String" %}
+        {% if length(dim) == 1 %}
+        IOUArray Int {{elem}}
+        {% elif length(dim) == 2 %}
+        IOUArray (Int,Int) {{elem}}
+        {% elif length(dim) == 3 %}
+        IOUArray (Int,Int,Int) {{elem}}
+        {% endif %}
+        {% else %}
+        {% if length(dim) == 1 %}
+        IOArray Int {{elem}}
+        {% elif length(dim) == 2 %}
+        IOArray (Int,Int) {{elem}}
+        {% elif length(dim) == 3 %}
+        IOArray (Int,Int,Int) {{elem}}
+        {% endif %}
+        {% endif %}
+term:
+    var: v{{ var }}
+    param: i{{ param }}
+    decl: |
+        {% if length(dim) == 0 %}
+        {% elif length(dim) == 1 %}
+        {{ var }} <- lift $ newArray_ (1, {{ dim[0] }}) :: Scanner ({{ type }})
+        {% elif length(dim) == 2 %}
+        {{ var }} <- lift $ newArray_ ((1,1), ({{ dim[0] }}, {{ dim[1] }})) :: Scanner ({{ type }})
+        {% elif length(dim) == 3 %}
+        {{ var }} <- lift $ newArray_ ((1,1,1), ({{ dim[0] }}, {{ dim[1] }}, {{ dim[2] }})) :: Scanner ({{ type }})
+        {% endif %}
+    scan: |
+        {% if length(index) == 0 %}
+        {{ var }} <- scan{{ type }}
+        {% else %}
+        scan{{ elem }} >>= lift . writeArray {{ var }} ({{ index[0] }}{% for i in index[1:] %},{{ i }}{% endfor %})
+        {% endif %}
+    main: |
+        {-# LANGUAGE TypeFamilies, BangPatterns #-}
+        import Data.Array
+        import Data.Array.Unboxed
+        import Data.Array.IO
+        import Data.Array.Unsafe
+        import Data.Int
+        import Control.Monad.State.Strict
+        import Data.ByteString.Char8 as B
+        import Data.ByteString(ByteString)
+        import Data.Char
+
+        type Scanner a = StateT ByteString IO a
+        type family Freeze a where
+          Freeze (IOUArray i v) = UArray i v
+          Freeze (IOArray i v) = Array i v
+
+        scanInt :: Scanner Int
+        scanInt = state $ \s ->
+            let Just (i, s') = B.readInt s in
+            (fromIntegral i, B.dropWhile isSpace s')
+
+        scanString :: Scanner B.ByteString
+        scanString = state $ \s ->
+            let (s1, s2) = B.span (not . isSpace) s in
+            (s1, B.dropWhile isSpace s2)
+
+        scanReal :: Scanner Double
+        scanReal = state $ \s ->
+            let Just (d, s') = pure (v, B.dropWhile isSpace s2)
+                    where
+                    (s1, s2) = B.span (not . isSpace) s 
+                    !v = read (B.unpack s1)
+            in (d, s')
+
+        main :: IO ()
+        main = B.getContents >>= \content -> flip evalStateT content $ do
+            {{ main }}
+        {% for v in filter(vars, (v) -> length(v[2]) > 0) %}
+            {{ v[0] }} <- lift $ unsafeFreeze {{ v[0] }} 
+        {% endfor %}
+            liftIO $ solve{% for v in vars %} {{ v[0] }}{% endfor %}
+
+        solve ::{% for v in vars %} {% if length(v[2]) > 0 %}Freeze ({{ v[1] }}){% else %}{{ v[1] }}{% endif %} ->{% endfor %} IO ()
+        solve{% for v in vars %} {{ v[0] }}{% endfor %} = undefined
+
+        -- END
+    for: |
+        forM_ [1..{{end}}] $ \{{ param }} -> do
+            {{ body }}
