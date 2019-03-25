@@ -66,16 +66,17 @@ instance FromJSON Render where
 parseYaml :: FilePath -> IO Render
 parseYaml path = Yaml.decodeFileThrow path
 
-render :: M.Map String Shape -> Render -> [ParserStmt] -> T.Text
-render shapeEnv (Render{ renderTerm = RenderTerm{..}
-                       , renderType = RenderType{..}
-                       , renderTabstop = tabstop }) = goMain
+render :: Render -> [ParserStmt] -> T.Text
+render (Render{ renderTerm = RenderTerm{..}
+              , renderType = RenderType{..}
+              , renderTabstop = tabstop }) = goMain
     where
     indent level txt = T.replicate (level * tabstop) " " <> txt
     nest txt = T.init $ T.unlines $ f $ T.lines txt
         where
         f (head:ls) = head : map (indent 1) ls
         f [] = []
+
     goMain :: [ParserStmt] -> T.Text
     goMain prog = Ginger.easyRender dict (getTemplate renderMain)
         where
@@ -84,6 +85,7 @@ render shapeEnv (Render{ renderTerm = RenderTerm{..}
                                     , map goSize (shapeSize sh)) 
                                     | (x, sh) <- declVars prog ]
                       , "main" .= nest (T.concat (map goStmt prog)) ]
+
     goStmt :: ParserStmt -> T.Text
     goStmt (StmtPattern ptn) = goPtn ptn
     goStmt (StmtDecl x shape) = 
@@ -93,22 +95,23 @@ render shapeEnv (Render{ renderTerm = RenderTerm{..}
                       , "type" .= goShape shape
                       , "dim" .= map goSize (shapeSize shape)
                       , "elem"  .= goElem (shapeElem shape) ]
-    goPtn :: Pattern -> T.Text
+
+    goPtn :: Pattern Shape -> T.Text
     goPtn (PatHSep s) = goSeq s
     goPtn (PatVCat s) = goSeq s
     goPtn (PatSingle xs) = T.concat (map goIdent xs)
 
-    goIdent :: Ident -> T.Text
-    goIdent (Ident x sub) = 
+    goIdent :: Ident Shape -> T.Text
+    goIdent (Ident x sub shape) = 
         Ginger.easyRender dict (getTemplate renderScan)
         where
-        shape = shapeEnv M.! x
         dict = object [ "var" .= goVar x
                       , "index" .= map goIndex sub
                       , "elem" .= goElem (shapeElem shape)
                       , "dim"  .= map goSize (shapeSize shape)
                       , "type" .= goShape shape ]
-    goSeq :: Sequence -> T.Text
+
+    goSeq :: Sequence Shape -> T.Text
     goSeq Sequence{..} = Ginger.easyRender dict (getTemplate renderFor)
         where
         dict = object [ "param" .= goParam _seqVar
@@ -117,14 +120,17 @@ render shapeEnv (Render{ renderTerm = RenderTerm{..}
         dEnd = case _seqEnd of
             Left n -> T.pack $ show n
             Right x -> goVar [x]
+
     goVar :: String -> T.Text
     goVar x = T.strip $ Ginger.easyRender dict (getTemplate renderVar)
         where
         dict = object [ "var" .= x ]
+
     goParam :: Int -> T.Text
     goParam i = T.strip $ Ginger.easyRender dict (getTemplate renderParam)
         where
         dict = object [ "param" .= i ]
+
     goShape :: Shape -> T.Text
     goShape (Shape [] e) = goElem e
     goShape (Shape l e) = T.strip $ Ginger.easyRender dict (getTemplate renderArray)
@@ -137,11 +143,13 @@ render shapeEnv (Render{ renderTerm = RenderTerm{..}
     goElem Real = T.strip $ Ginger.easyRender () (getTemplate renderReal)
     goElem String = T.strip $ Ginger.easyRender () (getTemplate renderString)
     goElem Unknown = T.strip $ Ginger.easyRender () (getTemplate renderUnknown)
+
     goIndex :: SubscriptElem -> T.Text
     goIndex One = "1"
     goIndex Two = "2"
     goIndex (Var n) = goVar [n]
     goIndex (Param i) = goParam i
+
     goSize :: Size -> T.Text
     goSize (SizeConst x) = T.pack (show x)
     goSize (SizeVar x) = goVar x

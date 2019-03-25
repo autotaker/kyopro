@@ -22,9 +22,8 @@ main = do
         case parse mainP "-" src of
             Left err -> print err
             Right ptns -> do
-                Right res <- pure $ infer ptns [ x | StringPrim x <- inputs]
-                print res
-                let prog = compile res ptns
+                Right shapedPtns <- pure $ infer ptns [ x | StringPrim x <- inputs]
+                let prog = compile shapedPtns
                 tmpl <- Render.parseYaml "render.yaml"
-                T.putStr $ Render.render res tmpl prog
+                T.putStr $ Render.render tmpl prog
 

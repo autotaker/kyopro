@@ -125,13 +125,13 @@ token = VInt32 <$> try decimal32
 parseInput :: Parser () -> String -> Text -> Either ParseError Input
 parseInput p name s = runParser (p *> getState) M.empty name s
 
-genParser :: [Pattern] -> Parser ()
+genParser :: [Pattern a] -> Parser ()
 genParser = mapM_ (goPtn M.empty)
     where
     goPtn !env (PatSingle xs) = mapM_ (goIdent env) xs
     goPtn env (PatHSep s) = goSeq env s
     goPtn env (PatVCat s) = goSeq env s
-    goIdent !env (Ident x sub) = do
+    goIdent !env (Ident x sub _) = do
         key <- forM sub $ \case 
             One -> pure 1
             Two -> pure 2
@@ -152,7 +152,7 @@ genParser = mapM_ (goPtn M.empty)
             goPtn (M.insert _seqVar i env) _seqPat
         
 type Constraint = (String, Shape)
-infer :: [Pattern] -> [Text] -> Either ParseError (M.Map String Shape)
+infer :: [Pattern a] -> [Text] -> Either ParseError [Pattern Shape]
 infer ptns inputs = do
     let p = genParser ptns
         names = [ "input" ++ show i | i <- [1..] :: [Int] ]
@@ -161,15 +161,19 @@ infer ptns inputs = do
         inferInput dict = do
             (Key x _, v) <- M.toList dict 
             pure (x, ShapeElem (toElem v))
-    pure $ M.fromListWith (<>) cs
+    let env = M.fromListWith (<>) cs
+        annotFunc (Ident x sub ann) = Ident x sub sh
+            where !sh = env M.! x
+    let ptns' = map (annotPat annotFunc) ptns
+    pure ptns'
 
-inferPtn :: M.Map Int Size -> Pattern -> [Constraint]
+inferPtn :: M.Map Int Size -> Pattern a -> [Constraint]
 inferPtn penv (PatSingle xs) = xs >>= inferIdent penv
 inferPtn penv (PatHSep s) = inferSeq penv s
 inferPtn penv (PatVCat s) = inferSeq penv s
 
-inferIdent :: M.Map Int Size -> Ident -> [Constraint]
-inferIdent penv (Ident x sub) = 
+inferIdent :: M.Map Int Size -> Ident a -> [Constraint]
+inferIdent penv (Ident x sub _) = 
     (x, Shape size Unknown) : (sub >>= inferSub)
     where
     size = map (\case 
@@ -182,7 +186,7 @@ inferSub :: SubscriptElem -> [Constraint]
 inferSub (Var ch) = pure ([ch], Shape [] Int32)
 inferSub _ = []
 
-inferSeq :: M.Map Int Size -> Sequence -> [Constraint]
+inferSeq :: M.Map Int Size -> Sequence a -> [Constraint]
 inferSeq penv Sequence{ _seqEnd = en, _seqVar = i, _seqPat = p } = 
     [ ([ch], Shape [] Int32) | Right ch <- pure en ] ++ inferPtn penv' p
     where

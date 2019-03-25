@@ -8,20 +8,21 @@ import qualified Data.Set as S
 import Data.Function
 
 data ParserStmt =
-    StmtPattern Pattern
+    StmtPattern (Pattern Shape)
   | StmtDecl String Shape
   deriving(Show)
 
-compile :: M.Map String Shape -> [Pattern] -> [ParserStmt]
-compile shapeEnv ptns = declVars ++ compilePtns shapeEnv S.empty ptns
+compile :: [Pattern Shape] -> [ParserStmt]
+compile ptns = declVars ++ compilePtns shapeEnv S.empty ptns
     where
+    shapeEnv = annotMap ptns
     declVars = 
         [ StmtDecl x sh | (x, sh) <- M.assocs shapeEnv, null $ shapeSize sh ]
 
 declVars :: [ParserStmt] -> [(String, Shape)]
 declVars l = [ (x, sh) | StmtDecl x sh <- l ]
 
-compilePtns :: M.Map String Shape -> S.Set String -> [Pattern] -> [ParserStmt]
+compilePtns :: M.Map String Shape -> S.Set String -> [Pattern Shape] -> [ParserStmt]
 compilePtns env scope [] = []
 compilePtns env scope (PatSingle xs: ptns) = 
     StmtPattern (PatSingle xs): defs (compilePtns env scope'' ptns)

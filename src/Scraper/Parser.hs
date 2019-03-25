@@ -19,33 +19,33 @@ import GHC.Generics hiding(Selector)
 import qualified Text.PrettyPrint.HughesPJClass as PP
 import Scraper.Types
 
-newtype Selector where
-    Sel :: Traversal' Pattern SubscriptElem -> Selector
+newtype Selector a where
+    Sel :: Traversal' (Pattern a) SubscriptElem -> Selector a
 
-enumSelector :: Pattern -> [Selector]
+enumSelector :: Pattern a -> [Selector a]
 enumSelector = goPat id
     where
-    goPat :: Traversal' Pattern Pattern -> Pattern -> [Selector]
+    goPat :: Traversal' (Pattern a) (Pattern a) -> Pattern a -> [Selector a]
     goPat sel (PatSingle l) = goIdent (sel . _PatSingle) l
     goPat sel (PatHSep s) = goPat (sel . _PatHSep . seqPat) (_seqPat s)
     goPat sel (PatVCat s) = goPat (sel . _PatVCat . seqPat) (_seqPat s)
-    goIdent :: Traversal' Pattern [Ident] -> [Ident] -> [Selector]
+    goIdent :: Traversal' (Pattern a) [Ident a] -> [Ident a] -> [Selector a]
     goIdent _ [] = []
     goIdent sel (x:xs) = 
         goSub (sel . _head . identSub) (_identSub x) 
             ++ goIdent (sel . _tail) xs
-    goSub :: Traversal' Pattern Subscript -> Subscript -> [Selector]
+    goSub :: Traversal' (Pattern a) Subscript -> Subscript -> [Selector a]
     goSub sel [] = []
     goSub sel (x:xs) = 
         [Sel $ sel . _head | x == One] 
             ++ goSub (sel . _tail) xs
 
-degree :: Pattern -> Int
+degree :: Pattern a -> Int
 degree (PatSingle _) = 0
 degree (PatHSep Sequence{ _seqPat = p }) = degree p + 1
 degree (PatVCat Sequence{ _seqPat = p }) = degree p + 1
 
-matchSeq :: Pattern -> Maybe Pattern -> Pattern -> Maybe Sequence
+matchSeq :: Pattern a -> Maybe (Pattern a) -> Pattern a -> Maybe (Sequence a)
 matchSeq pat1 mpat2 patN = do
     let sels = filter p $ enumSelector pat1
         isVar (Var _) = True
@@ -88,10 +88,10 @@ exprP = (Id <$> identP)
 varP :: Parser a -> Parser a
 varP p = string "<var>" *> p <* string "</var>"
 
-identP :: Parser Ident 
-identP = Ident <$> identifier <*> option [] subscriptP
+identP :: Parser (Ident ())
+identP = Ident <$> identifier <*> option [] subscriptP <*> pure ()
 
-lineP :: Parser Pattern
+lineP :: Parser (Pattern ())
 lineP = (try finiteP <|> try sequenceP) <* (void crlf <|> eof)
     where
     sp = many1 (char ' ')
@@ -107,7 +107,7 @@ lineP = (try finiteP <|> try sequenceP) <* (void crlf <|> eof)
         Just s <- pure $ matchSeq pat1 pat2 patN
         pure $ PatHSep s
 
-specP :: Parser Pattern
+specP :: Parser (Pattern ())
 specP = try vcatP <|> lineP
     where
     vcatP = do
@@ -118,7 +118,7 @@ specP = try vcatP <|> lineP
         Just s <- pure $ matchSeq pat1 pat2 patN
         pure $ PatVCat s
 
-mainP :: Parser [Pattern]
+mainP :: Parser [Pattern ()]
 mainP = many specP <* eof
 
 subscriptP :: Parser Subscript

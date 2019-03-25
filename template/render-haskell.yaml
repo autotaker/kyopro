@@ -41,6 +41,9 @@ term:
         {% else %}
         scan{{ elem }} >>= lift . writeArray {{ var }} ({{ index[0] }}{% for i in index[1:] %},{{ i }}{% endfor %})
         {% endif %}
+    for: |
+        forM_ [1..{{end}}] $ \{{ param }} -> do
+            {{ body }}
     main: |
         {-# LANGUAGE TypeFamilies, BangPatterns #-}
         import Data.Array
@@ -86,8 +89,3 @@ term:
 
         solve ::{% for v in vars %} {% if length(v[2]) > 0 %}Freeze ({{ v[1] }}){% else %}{{ v[1] }}{% endif %} ->{% endfor %} IO ()
         solve{% for v in vars %} {{ v[0] }}{% endfor %} = undefined
-
-        -- END
-    for: |
-        forM_ [1..{{end}}] $ \{{ param }} -> do
-            {{ body }}

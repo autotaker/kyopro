@@ -9,10 +9,10 @@ main :: IO ()
 main = hspec $ do
     describe "Parser.mathP" $ do
         let samples = [ 
-                ("<var>A</var>", P.Id (P.Ident "A" []))
-              , ("<var>A_1</var>", P.Id (P.Ident "A" [P.One]))
-              , ("<var>A_2</var>", P.Id (P.Ident "A" [P.Two]))
-              , ("<var>A_N</var>", P.Id (P.Ident "A" [P.Var 'N']))
+                ("<var>A</var>", P.Id (P.Ident "A" [] ()))
+              , ("<var>A_1</var>", P.Id (P.Ident "A" [P.One] ()))
+              , ("<var>A_2</var>", P.Id (P.Ident "A" [P.Two] ()))
+              , ("<var>A_N</var>", P.Id (P.Ident "A" [P.Var 'N'] ()))
               , ("<var>...</var>", P.Dots)
               , ("<var>\\vdots</var>", P.VDots) 
               ]
