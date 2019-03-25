@@ -14,7 +14,7 @@ $ stack install
 $ cabal v2-install exe:kyopro
 ```
 
-Build may take more than 5 minutes. Please bee patient.
+Build may take more than 5 minutes. Please be patient.
 
 # How to use it
 
