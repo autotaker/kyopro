@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 import Test.Hspec
-import qualified Scraper.Parser as P
+import qualified Parser.AtCoder as P
 import Text.Parsec
 import Control.Monad
 import Data.Either

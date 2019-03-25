@@ -1,16 +1,17 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
-import Scraper.GenParser hiding (main)
-import Scraper.Types
+import Generator.Infer
+import Parser.Types
+import Parser.AtCoder
 import qualified Generator.Render as Render
 import Generator.Compile
+
 import qualified Data.Aeson as Aeson
 import Control.Monad
 import Control.Lens
 import Data.Aeson.Lens
 import Text.Parsec
-import Scraper.Parser
 import qualified Data.Text.IO as T
 
 main :: IO ()

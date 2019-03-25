@@ -8,7 +8,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
 
-module Scraper.Types(
+module Parser.Types(
     Exp(..)
   , Ident(..)
   , Subscript

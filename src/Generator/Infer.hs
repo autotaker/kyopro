@@ -2,15 +2,14 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE RecordWildCards #-}
-module Scraper.GenParser(Elem(..), Size(..), Shape(..), shapeDim, infer, main) where
-import Scraper.Types
+module Generator.Infer(Elem(..), Size(..), Shape(..), shapeDim, infer) where
+import Parser.Types
 import Control.Monad
 import qualified Data.Set as S 
 import qualified Data.Map.Strict as M
 import qualified Data.Aeson as Aeson
 import Data.Aeson.Lens
 import Control.Lens hiding(noneOf)
-import Scraper.Parser(mainP)
 import Text.Parsec hiding(token)
 import Data.Text(Text)
 import Data.Functor.Identity
@@ -194,14 +193,3 @@ inferSeq penv Sequence{ _seqEnd = en, _seqVar = i, _seqPat = p } =
             Left s -> SizeConst s
             Right ch -> SizeVar [ch]
         penv' = M.insert i size penv
-
-main :: IO ()
-main = do
-    Just v <- Aeson.decodeFileStrict "tasks.json" :: IO (Maybe Aeson.Value)
-    forM_ (v ^.. values) $ \task -> do
-        let [StringPrim src] = task ^.. key "inputSpecPre". _Primitive 
-        let inputs = task ^.. key "sampleCases" . values . key "input" . _Primitive 
-        case parse mainP "-" src of
-            Left err -> print err
-            Right ptns -> 
-                print $ infer ptns [ x | StringPrim x <- inputs]

@@ -6,6 +6,9 @@
 module Generator.Render(Render, render, parseYaml)  where
 
 import Generator.Compile
+import Generator.Infer
+import Parser.Types
+
 import qualified Data.Yaml as Yaml
 import qualified Text.Ginger as Ginger
 import Data.Aeson hiding(String)
@@ -14,8 +17,6 @@ import Data.Char
 import Data.Function
 import qualified Data.Text as T
 import qualified Data.Map.Strict as M
-import Scraper.Types
-import Scraper.GenParser 
 
 data Render = Render {
     renderType :: !RenderType

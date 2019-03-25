@@ -2,8 +2,8 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE OverloadedStrings #-}
-module Scraper.Parser(
-    module Scraper.Types
+module Parser.AtCoder(
+    module Parser.Types
   , mathP, mainP ) where
 
 import qualified Data.Text as T
@@ -17,7 +17,7 @@ import Control.Monad
 import Control.Lens
 import GHC.Generics hiding(Selector)
 import qualified Text.PrettyPrint.HughesPJClass as PP
-import Scraper.Types
+import Parser.Types
 
 newtype Selector a where
     Sel :: Traversal' (Pattern a) SubscriptElem -> Selector a

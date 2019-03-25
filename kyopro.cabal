@@ -18,9 +18,9 @@ extra-source-files:  CHANGELOG.md
 
 library
   exposed-modules: Scraper.AtCoder
-                 , Scraper.Parser
-                 , Scraper.Types
-                 , Scraper.GenParser
+                 , Parser.Types
+                 , Parser.AtCoder
+                 , Generator.Infer
                  , Generator.Compile
                  , Generator.Render
   -- other-modules:

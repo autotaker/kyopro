@@ -1,8 +1,8 @@
 {-# LANGUAGE BangPatterns #-}
 module Generator.Compile( ParserStmt(..), compile, declVars ) where
 
-import Scraper.Types
-import Scraper.GenParser
+import Parser.Types
+import Generator.Infer
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 import Data.Function
