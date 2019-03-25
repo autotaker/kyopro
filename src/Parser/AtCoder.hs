@@ -98,8 +98,8 @@ lineP = (try finiteP <|> try sequenceP) <* (void crlf <|> eof)
     finiteP = PatSingle <$> sepBy1 (varP identP) sp
     sequenceP = do
         var1 <- varP identP <* sp 
-        mvar2 <- optionMaybe (varP identP <* sp)
-        _ <- varP dotsP <* sp
+        mvar2 <- optionMaybe (try (varP identP) <* sp)
+        _ <- dotsP <* sp
         varN <- varP identP
         let pat1 = PatSingle [var1]
             pat2 = fmap (PatSingle . (:[])) mvar2
@@ -112,8 +112,8 @@ specP = try vcatP <|> lineP
     where
     vcatP = do
         pat1 <- lineP
-        pat2 <- optionMaybe lineP
-        varP vdotsP <* crlf
+        pat2 <- optionMaybe (try lineP)
+        vdotsP <* crlf
         patN <- lineP
         Just s <- pure $ matchSeq pat1 pat2 patN
         pure $ PatVCat s
@@ -133,5 +133,5 @@ elemP = One <$ char '1' <|> Two <$ char '2' <|> Var <$> letter
 identifier :: Parser String
 identifier = many1 letter
 
-dotsP = string "..."
-vdotsP = string "\\vdots" <|> string ":"
+dotsP = varP (try (string "...") <|> try (string "..") <|> try (string "\\dots") <|> string "\\cdots") <|> string "..."
+vdotsP = varP (string "\\vdots" <|> string ":") <|> string ":"
