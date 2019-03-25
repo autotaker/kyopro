@@ -29,44 +29,62 @@ import Control.Monad.Except
 
 import Control.Exception
 
-data Flag = LoginRequired | RenderTemplate FilePath | ShowHelp
+data Flag = LoginRequired | RenderTemplate FilePath | ShowHelp | GenerateRenderTemplate | Verbose
     deriving(Eq)
 
 data Config = Config {
     loginRequired :: Bool
   , renderTemplate :: FilePath
   , contestId :: String
+  , verbose :: Bool
 }
 
 options :: [OptDescr Flag]
 options =
     [ Option ['r'] ["render"] (ReqArg RenderTemplate "FILE") "specify your render template" 
     , Option ['l'] ["login"] (NoArg LoginRequired) "enable login"
+    , Option ['v'] ["verbose"] (NoArg Verbose) "increase verbosity"
+    , Option [] ["generate"] (NoArg GenerateRenderTemplate) "generate a render template"
     , Option ['h'] ["help"] (NoArg ShowHelp) "show help"
     ]
 defaultConfig contest = Config {
     loginRequired = False
   , renderTemplate = "render.yaml"
   , contestId = contest
+  , verbose = False
 }
 
-parseConfig :: IO Config
+parseConfig :: LoggingT IO Config
 parseConfig = do
-    args <- getArgs
+    args <- liftIO getArgs
     let header = "Usage: kyopro [Option..] <contestID>"
     case getOpt Permute options args of
+        (opts, _, []) 
+            | GenerateRenderTemplate `elem` opts -> do
+                generateRenderTemplate
+                liftIO exitSuccess
         (opts, [name], []) 
-            | ShowHelp `elem` opts -> do
+            | ShowHelp `elem` opts -> liftIO $ do
                 putStrLn $ usageInfo header options
                 exitSuccess
             | otherwise -> pure $! foldl step (defaultConfig name) opts
                 where
                     step acc LoginRequired = acc { loginRequired = True }
                     step acc (RenderTemplate path) = acc { renderTemplate = path }
+                    step acc Verbose = acc { verbose = True }
                     step acc ShowHelp = acc
         (_, _, errs) -> do
-            putStrLn $ concat errs ++ usageInfo header options
-            exitFailure
+            logErrorN $ T.pack $ concat errs ++ usageInfo header options
+            liftIO exitFailure
+
+generateRenderTemplate :: LoggingT IO ()
+generateRenderTemplate = do
+    b <- liftIO $ doesFileExist "render.yaml"
+    when b  $ do
+        logErrorN "\"render.yaml\" exists. Please delete it."
+        liftIO exitFailure
+    liftIO $ Paths_kyopro.getDataFileName "template/render-cpp.yaml" >>= T.readFile >>= T.writeFile "render.yaml"
+    logInfoN "\"render.yaml\" is generated."
 
 promptAccountInfo :: Config -> IO (Maybe Scraper.AccountInfo)
 promptAccountInfo Config{ loginRequired = False } = pure Nothing
@@ -104,10 +122,11 @@ findYaml path = do
             pure path
 
 main :: IO ()
-main = do
-    config <- parseConfig
-    runStdoutLoggingT $ do
-        r <- runExceptT (doit config)
+main = runStdoutLoggingT $ do
+        config <- parseConfig
+        r <- if verbose config 
+            then runExceptT (doit config)
+            else filterLogger (\_ level -> level >= LevelInfo) $ runExceptT (doit config)
         case r of
             Left err -> logErrorN $ T.pack err
             Right v -> pure v
@@ -115,10 +134,11 @@ main = do
     doit config = do
         taskFileExists <- liftIO $ doesFileExist "tasks.json"
         unless taskFileExists $ do
-            logInfoN $ "task.json doesn't exists. Trying to scrape it from the contest page."
+            logInfoN $ "\"tasks.json\" doesn't exists. Trying to scrape it from the contest page."
             maccount <- liftIO $ promptAccountInfo config
-            liftIO $ Scraper.downloadTasks maccount (contestId config)
-        when taskFileExists $ logInfoN "\"tasks.json\" found. Skippin scraping from the contest page. If you want to rescrape it, please delete \"tasks.json\"."
+            lift $ Scraper.downloadTasks maccount (contestId config)
+            logInfoN $ "Scraped \"tasks.json\"."
+        when taskFileExists $ logInfoN "\"tasks.json\" found. Skippin scraping from the contest page. If you want to re-scrape it, please delete \"tasks.json\"."
 
         v <- liftIO (Aeson.decodeFileStrict "tasks.json" :: IO (Maybe Aeson.Value))  >>= maybeError "tasks.json is broken"
         tmpl <- liftIO $ findYaml (renderTemplate config) >>= Render.parseYaml 

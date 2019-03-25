@@ -16,6 +16,8 @@ import           Text.HTML.Scalpel
 import           Text.Printf
 import           GHC.Generics
 import           Data.Char(toLower)
+import           Control.Monad.Logger
+import           Control.Monad.Trans
 
 rootURL = "https://atcoder.jp/"
 loginURL = rootURL </> "/login"
@@ -142,53 +144,40 @@ scrapeResponse res action = scrapeStringLike htmlText action
     htmlText = decodeUtf8 $ LBS.toStrict (res ^. responseBody)
 
 
-login :: Session.Session -> String -> String -> IO ()
+login :: Session.Session -> String -> String -> LoggingT IO ()
 login sess username passwd = do
-    loginGetR <- Session.get sess loginURL
+    loginGetR <- liftIO $ Session.get sess loginURL
     let Just formTmpl = scrapeResponse loginGetR parseLoginForm
         !form = buildLoginForm formTmpl username passwd
-    loginPostRes <- Session.post sess loginURL form
+    logDebugN $ "POST " <> T.pack loginURL
+    loginPostRes <- liftIO $ Session.post sess loginURL form
+    logDebugN $ "POST OK"
     let status = loginPostRes ^. responseStatus . statusCode
-    printf "Login Succeeded (%d)\n" status
+    logInfoN "Login Succeeded" 
 
-tasks :: Session.Session -> String -> IO [TaskInfo]
+tasks :: Session.Session -> String -> LoggingT IO [TaskInfo]
 tasks sess contestId = do
-    tasksGetR <- Session.get sess (contestRootURL contestId </> "tasks" )
+    tasksGetR <- liftIO $ Session.get sess (contestRootURL contestId </> "tasks" )
     let Just tasks = scrapeResponse tasksGetR parseTasks
     pure tasks
 
-taskDetail :: Session.Session -> TaskInfo -> IO TaskDetail
+taskDetail :: Session.Session -> TaskInfo -> LoggingT IO TaskDetail
 taskDetail sess task = do
     let url = rootURL </> T.unpack (taskLink task)
-    detailGetR <- Session.get sess url
+    logDebugN $ "GET " <> T.pack url
+    detailGetR <- liftIO $ Session.get sess url
+    logDebugN $ "GET OK"
     let Just detail = scrapeResponse detailGetR (parseTaskDetail task)
     pure detail
 
 data AccountInfo = AccountInfo { username :: String, password :: String }
-downloadTasks :: Maybe AccountInfo -> String -> IO ()
+downloadTasks :: Maybe AccountInfo -> String -> LoggingT IO ()
 downloadTasks maccount contestId = do
-    sess <- Session.newSession
+    sess <- liftIO Session.newSession
     _ <- case maccount of
         Just AccountInfo{..} -> login sess username password
         Nothing -> pure ()
     tasks <- tasks sess contestId
     taskDetails <- forM tasks $ taskDetail sess
-    Aeson.encodeFile "tasks.json" taskDetails
+    liftIO $ Aeson.encodeFile "tasks.json" taskDetails
     
-main :: IO ()
-main = do
-    sess <- Session.newSession
-    username <- getLine
-    passwd <- getLine
-    contestName <- getLine
-    login sess username passwd
-    tasks <- tasks sess contestName
-    LBS.putStr $ Aeson.encode tasks
-    putChar '\n' 
-    taskDetails <- forM tasks $ \task -> do
-        l <- taskDetail sess task
-        LBS.putStr $ Aeson.encode l
-        putChar '\n'
-        pure l
-    Aeson.encodeFile "tasks.json" taskDetails
-
