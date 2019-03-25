@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE FlexibleContexts #-}
 module CLI.Main(main) where
 
 import Generator.Infer
@@ -22,6 +23,9 @@ import System.Exit
 import System.IO
 import System.Directory
 import Debug.Trace
+import Paths_kyopro
+import Control.Monad.Logger
+import Control.Monad.Except
 
 import Control.Exception
 
@@ -60,7 +64,9 @@ parseConfig = do
                     step acc LoginRequired = acc { loginRequired = True }
                     step acc (RenderTemplate path) = acc { renderTemplate = path }
                     step acc ShowHelp = acc
-        (_, _, errs) -> ioError (userError (concat errs ++ usageInfo header options))
+        (_, _, errs) -> do
+            putStrLn $ concat errs ++ usageInfo header options
+            exitFailure
 
 promptAccountInfo :: Config -> IO (Maybe Scraper.AccountInfo)
 promptAccountInfo Config{ loginRequired = False } = pure Nothing
@@ -75,44 +81,61 @@ promptAccountInfo _ = do
     hFlush stdout
     pure $ Just Scraper.AccountInfo{..}
 
-
 withEcho :: Bool -> IO a -> IO a
 withEcho echo action = do
     old <- hGetEcho stdin
     bracket_ (hSetEcho stdin echo) (hSetEcho stdin old) action
 
-maybeError :: String -> Maybe a -> IO a
-maybeError msg Nothing = ioError (userError msg)
+maybeError :: Monad m => String -> Maybe a -> ExceptT String m a
+maybeError msg Nothing = throwError msg 
 maybeError _ (Just v) = pure v
 
-eitherError :: Show e => Either e a -> IO a
-eitherError (Left err) = ioError (userError (show err))
-eitherError (Right v) = pure v
 
 traceIt :: Show a => a -> a
 traceIt x = traceShow x x
 
+findYaml :: String -> IO String
+findYaml path = do
+    b <- doesFileExist path
+    if b 
+        then pure path
+        else do
+            path <- Paths_kyopro.getDataFileName ("template/" ++ path)
+            pure path
+
 main :: IO ()
 main = do
     config <- parseConfig
-    taskFileExists <- doesFileExist "tasks.json"
-    unless taskFileExists $ do
-        maccount <- promptAccountInfo config
-        Scraper.downloadTasks maccount (contestId config)
-    v <- (Aeson.decodeFileStrict "tasks.json" :: IO (Maybe Aeson.Value)) >>= maybeError "tasks.json is broken"
-    forM_ (v ^.. values) $ \task -> do
-        let [StringPrim src] = task ^.. key "inputSpecPre". _Primitive 
-        let [StringPrim taskId] = traceIt $ task ^.. key "info" . key "id" . _Primitive
-        createDirectoryIfMissing False (T.unpack taskId)
-        let inputs = task ^.. key "sampleCases" . values . key "input" . _Primitive 
-        tmpl <- Render.parseYaml "render.yaml"
-        case parse mainP (T.unpack taskId ++ ".inputSpecPre") src of
-            Left err -> hPutStrLn stderr $ show err
-            Right ptns -> do
-                case infer ptns [ x | StringPrim x <- inputs] of
-                    Left err -> hPutStrLn stderr $ show err
-                    Right shapedPtns -> do
-                        let prog = compile shapedPtns
-                        let mainPath = T.unpack taskId ++ "/" ++ "main.cpp"
-                        Render.render (T.unpack taskId) tmpl prog
+    runStdoutLoggingT $ do
+        r <- runExceptT (doit config)
+        case r of
+            Left err -> logErrorN $ T.pack err
+            Right v -> pure v
+    where 
+    doit config = do
+        taskFileExists <- liftIO $ doesFileExist "tasks.json"
+        unless taskFileExists $ do
+            logInfoN $ "task.json doesn't exists. Trying to scrape it from the contest page."
+            maccount <- liftIO $ promptAccountInfo config
+            liftIO $ Scraper.downloadTasks maccount (contestId config)
+        when taskFileExists $ logInfoN "\"tasks.json\" found. Skippin scraping from the contest page. If you want to rescrape it, please delete \"tasks.json\"."
+
+        v <- liftIO (Aeson.decodeFileStrict "tasks.json" :: IO (Maybe Aeson.Value))  >>= maybeError "tasks.json is broken"
+        tmpl <- liftIO $ findYaml (renderTemplate config) >>= Render.parseYaml 
+        let handleByLogging action = catchError action (\e -> logErrorN $ T.pack e)
+        forM_ (v ^.. values) $ \task -> handleByLogging $ do
+            src <- case task ^.. key "inputSpecPre". _Primitive of
+                [StringPrim src] -> pure src
+                _ -> throwError "the value for key \"inputSpecPre\" is invalid"
+            taskId <- case task ^.. key "info" . key "id" . _Primitive of
+                [StringPrim taskId] -> pure taskId
+                _ -> throwError "the value for key \"info.id\" is invalid"
+            logInfoN $ "creating directory: "  <> taskId
+            liftIO $ createDirectoryIfMissing False (T.unpack taskId)
+            let inputs = task ^.. key "sampleCases" . values . key "input" . _Primitive 
+            ptns <- withExceptT show $ liftEither $ parse mainP (T.unpack taskId ++ ".inputSpecPre") src
+            shapedPtns <- withExceptT show $ liftEither $ infer ptns [ x | StringPrim x <- inputs] 
+            let prog = compile shapedPtns
+            let mainPath = T.unpack taskId ++ "/" ++ "main.cpp"
+            liftIO $ Render.render (T.unpack taskId) tmpl prog
 

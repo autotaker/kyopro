@@ -1,4 +1,5 @@
 tabstop: 4
+file: Main.hs
 type:
     int32: Int
     int64: Int
