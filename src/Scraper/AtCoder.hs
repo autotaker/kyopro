@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, RecordWildCards, BangPatterns, NoTypeApplications, LambdaCase, DeriveGeneric #-}
-module Scraper.AtCoder where
+module Scraper.AtCoder( downloadTasks, AccountInfo(..) ) where
 
 import           Control.Monad
 import           Control.Applicative
@@ -164,6 +164,17 @@ taskDetail sess task = do
     let Just detail = scrapeResponse detailGetR (parseTaskDetail task)
     pure detail
 
+data AccountInfo = AccountInfo { username :: String, password :: String }
+downloadTasks :: Maybe AccountInfo -> String -> IO ()
+downloadTasks maccount contestId = do
+    sess <- Session.newSession
+    _ <- case maccount of
+        Just AccountInfo{..} -> login sess username password
+        Nothing -> pure ()
+    tasks <- tasks sess contestId
+    taskDetails <- forM tasks $ taskDetail sess
+    Aeson.encodeFile "tasks.json" taskDetails
+    
 main :: IO ()
 main = do
     sess <- Session.newSession

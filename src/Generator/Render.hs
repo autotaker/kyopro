@@ -16,12 +16,14 @@ import GHC.Generics
 import Data.Char
 import Data.Function
 import qualified Data.Text as T
+import qualified Data.Text.IO as T
 import qualified Data.Map.Strict as M
 
 data Render = Render {
     renderType :: !RenderType
   , renderTerm :: !RenderTerm
   , renderTabstop :: !Int
+  , renderFile :: !Template
 } deriving(Generic)
 
 newtype Template = Template { getTemplate :: Ginger.Template Ginger.SourcePos }
@@ -67,11 +69,14 @@ instance FromJSON Render where
 parseYaml :: FilePath -> IO Render
 parseYaml path = Yaml.decodeFileThrow path
 
-render :: Render -> [ParserStmt] -> T.Text
-render (Render{ renderTerm = RenderTerm{..}
+render :: FilePath -> Render -> [ParserStmt] -> IO ()
+render pathDir (Render{ renderTerm = RenderTerm{..}
               , renderType = RenderType{..}
-              , renderTabstop = tabstop }) = goMain
+              , renderTabstop = tabstop
+              , renderFile = fileRender }) prog = doit 
     where
+    path = pathDir ++ "/" ++ (T.unpack $ T.strip $ Ginger.easyRender () (getTemplate fileRender))
+    doit = T.writeFile path $ goMain prog
     indent level txt = T.replicate (level * tabstop) " " <> txt
     nest txt = T.init $ T.unlines $ f $ T.lines txt
         where

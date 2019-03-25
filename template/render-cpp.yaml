@@ -1,4 +1,117 @@
+help:
+    tabstop:
+        type: int
+        doc: tab width of the templates
+    file:
+        type: string
+        doc: filename of the main
+    type:
+        doc: template for types
+        int32:
+            type: string
+            doc: template for the 32-bit integer type
+        int64:
+            type: string
+            doc: template for the 64-bit integer type
+        real:
+            type: string
+            doc: template for the floating-point numeric type
+        string:
+            type: string
+            doc: template for the string type
+        unknown:
+            type: string
+            doc: template for the unknown type. This type may occur when the type inference failed.
+        array:
+            type: template
+            doc: template for the array types.
+            args:
+                - dim:
+                    type: (string or int) list
+                    doc: represents the size of the array.
+                    example: [20, "H"]
+                - elem:
+                    type: string
+                    doc: represents the type of the elements of the array.
+    term:
+        doc: template for terms
+        var:
+            type: template
+            doc: template for variables
+            args:
+                - var:
+                    type: string
+                    doc: represents the name of the variable
+                    example: "A"
+        param:
+            type: template
+            doc: template for iteration parameters
+            args:
+                - var:
+                    type: int
+                    doc: represents the identifier of the iteration parameter
+                    example: 1
+        decl:
+            type: template
+            doc: template for variable declarations
+            args:
+                - var:
+                    type: string
+                    doc: represents the name of the variable
+                - type:
+                    type: string
+                    doc: represents the type of the variable
+                - dim:
+                    type: (string or int) list
+                    doc: represents the size of the array variable.
+                - elem:
+                    type: string
+                    doc: represents the type of the elements of the array variable.
+        scan:
+            type: template
+            doc: template for the statements to scan a value into a variable at an index.
+            args:
+                - var:
+                    type: string
+                    doc: represents the name of the variable
+                - index:
+                    type: string list
+                    doc: represents the index where the value is stored.
+                - elem:
+                    type: string
+                    doc: represents the type of the value
+                - dim:
+                    type: (string or int) list
+                    doc: represents the size of the variable
+                - type:
+                    type: string
+                    doc: represents the type of the variable
+        for:
+            type: template
+            doc: template for the for-loop statements
+            args:
+                param:
+                    type: string
+                    doc: represents the iteration variable
+                end:
+                    type: string or int
+                    doc: represents the iteration limit
+                body:
+                    type: string
+                    doc: represents the body of the loop.
+        main:
+            type: template
+            doc: template for the main funcion, which includes headers and footers.
+            args:
+                main:
+                    type: string
+                    doc: represents the generated parse statements 
+                vars:
+                    type: string list
+                    doc: represents the list of variables
+
 tabstop: 2
+file: main.cpp
 type:
     int32: int
     int64: long long
@@ -23,9 +136,9 @@ term:
         {% elif length(dim) == 1 %}
         {{ type }} {{ var }}({{ dim[0] }});
         {% elif length(dim) == 2 %}
-        {{ type }} {{ var }}(dim[0], std::vector<{{ elem }}>({{ dim[1] }}));
+        {{ type }} {{ var }}({{  dim[0] }}, std::vector<{{ elem }}>({{ dim[1] }}));
         {% elif length(dim) == 3 %}
-        {{ type }} {{ var }}(dim[0], std::vector<std::vector<{{ elem }}>>({{ dim[1] }}, std::vector<{{ elem }}>({{ dim[2] }})));
+        {{ type }} {{ var }}({{  dim[0] }}, std::vector<std::vector<{{ elem }}>>({{ dim[1] }}, std::vector<{{ elem }}>({{ dim[2] }})));
         {% endif %}
     scan: |
         std::cin >> {{ var }}{% for i in index %}[{{ i }}]{% endfor %};
